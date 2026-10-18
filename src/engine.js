@@ -342,8 +342,10 @@ function storylines(T, input, curve, GRID, W, fantAt, clock) {
     if (worst >= sd / 2) out.push({ type: 'comeback', team: W, deficit: +worst.toFixed(1), gc: at, text: `${T[W].name} came back from ${worst.toFixed(1)} down after Sunday's early games.` });
   }
   const m = Math.abs(T.A.fant - T.B.fant);
-  if (W && m < 5) out.push({ type: 'close', margin: +m.toFixed(2), text: `Decided by ${m.toFixed(2)} points.` });
-  if (W && m > 40) out.push({ type: 'blowout', team: W, margin: +m.toFixed(1), text: `${T[W].name} won by ${m.toFixed(1)}.` });
+  const sc2 = input.scale, lsd = sc2 && sc2.sd > 0 ? sc2.sd : (sc2 && sc2.mu > 0 ? sc2.mu : 110) * .27;
+  // nail-biter: final margin under 0.2 league SD; blowout: over 1.5 league SD
+  if (W && m < .2 * lsd) out.push({ type: 'close', margin: +m.toFixed(2), text: `Decided by ${m.toFixed(2)} points.` });
+  if (W && m > 1.5 * lsd) out.push({ type: 'blowout', team: W, margin: +m.toFixed(1), text: `${T[W].name} won by ${m.toFixed(1)}.` });
   for (const s of ['A', 'B']) {
     const dud = T[s].ps.filter(p => SKILL.has(p.pos)).sort((a, b) => a.pts - b.pts)[0];
     if (dud && dud.pts < 5) out.push({ type: 'dud', team: s, player: dud.name, pts: dud.pts, text: `${dud.name} managed ${dud.pts.toFixed(1)}.` });
