@@ -17,7 +17,7 @@ export class Player {
     this.cv = canvas; this.cx = canvas.getContext('2d'); this.cx.imageSmoothingEnabled = false;
     this.g = game; this.S = game.snaps; this.hooks = hooks;
     this.reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    this.speed = 2; this.running = false; this.mode = 'highlights';
+    this.speed = 1; this.running = false; this.mode = 'highlights';
     this.order = game.highlights; this.pos = 0; // index into this.order
     this.cam = wx(50); this.sparks = []; this.phase = null; this.sound = false; this.actx = null;
     this.crowd = []; let sd = 12345; const rnd = () => (sd = (sd * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
@@ -58,11 +58,12 @@ export class Player {
     if (['kickoff', 'punt', 'fg', 'pat'].includes(t)) this.tone(220, .12, 0, 'triangle', .1);
   }
   finishSnap() {
-    const x = this.S[this.curSnap()], t = this.phase.scene.act.type;
+    const i = this.curSnap(), x = this.S[i], t = this.phase.scene.act.type;
     this.pos++; this.emit(true);
     if (x.kind === 'td') this.sfx('td'); else if (x.kind === 'fg' || (x.kind === 'pat' && !/NO GOOD/.test(x.text))) this.sfx('good'); else if (t === 'int' || t === 'fum') this.sfx('bad'); else if (t === 'sack' || t === 'inc') this.tone(1760, .25, 0, 'sine', .05);
-    const hold = ['td', 'fg', 'turnover', 'half'].includes(x.kind) ? 1700 : x.kind === 'td_score' ? 700 : 450;
-    this.phase = { scene: null, hold: performance.now() + hold / this.speed, last: this.phase.scene };
+    let hold = ['td', 'fg', 'turnover'].includes(x.kind) ? 1700 / this.speed : ['half', 'qtr'].includes(x.kind) ? 2600 / Math.min(this.speed, 2) : x.kind === 'td_score' ? 700 / this.speed : 450 / this.speed;
+    if (this.hooks.booth?.(i)) hold += 2600 / Math.min(this.speed, 2); // time to read the booth
+    this.phase = { scene: null, hold: performance.now() + hold, last: this.phase.scene };
     if (this.pos >= this.order.length) { this.running = false; this.hooks.state?.(false, true); }
   }
   frame(now) {
@@ -91,7 +92,7 @@ export class Player {
     const t = x.text, s = x.off; let m;
     const k = x.kind;
     if (k === 'kickoff') return { type: 'kickoff' }; if (k === 'punt') return { type: 'punt' }; if (k === 'fg') return { type: 'fg' };
-    if (k === 'pat') return { type: 'pat' }; if (k === 'td_score') return { type: 'celebrate' }; if (k === 'half') return { type: 'half' }; if (k === 'final') return { type: 'final' };
+    if (k === 'pat') return { type: 'pat' }; if (k === 'td_score') return { type: 'celebrate' }; if (k === 'half' || k === 'qtr') return { type: 'half' }; if (k === 'final') return { type: 'final' };
     if (k === 'sack') return { type: 'sack', safety: /SAFETY/.test(t) };
     if (k === 'turnover') return { type: /intercepted/.test(t) ? 'int' : 'fum' };
     if (/knee/.test(t)) return { type: 'knee' };
@@ -148,7 +149,7 @@ export class Player {
         if (t === 'int') { const [a, b] = cb.f(p); return [a, b - 9, 0]; }
         const [a, b] = r.f(p); return [a + dir * 3, b - 7, 0];
       };
-      if (t === 'int') { sc.fx = 'INTERCEPTED!'; sc.labels = [qb]; } else if (t === 'inc') { sc.fx = 'INCOMPLETE'; sc.labels = [qb]; } else { sc.labels = [qb, r]; sc.carrier = r; if (x.kind === 'td') sc.td = true; if (x.kind === 'two') sc.fx = 'GOOD!'; }
+      if (t === 'int') { sc.fx = 'INTERCEPTED!'; sc.labels = []; } else if (t === 'inc') { sc.fx = 'INCOMPLETE'; sc.labels = [qb]; } else { sc.labels = [r]; sc.carrier = r; if (x.kind === 'td') sc.td = true; if (x.kind === 'two') sc.fx = 'GOOD!'; }
     } else if (t === 'sack') {
       const qb = by.qb; qb.f = p => [lerp(qb.bx, end, ease(cl(p / .6))), qb.by];
       ['dl1', 'dl2', 'dl3', 'lb1'].forEach((k, j) => chase(by[k], qb.f, j * .03, 1.1));
@@ -213,10 +214,16 @@ export class Player {
   draw(sc, p, now) {
     const cx = this.cx, T = this.g.teams;
     if (sc && sc.noField) {
-      cx.fillStyle = '#000'; cx.fillRect(0, 0, W, H); const x = sc.x, t = x.kind === 'final' ? 'FINAL' : 'HALFTIME';
-      cx.font = `16px ${PIX}`; cx.fillStyle = '#f8b800'; let w = cx.measureText(t).width; cx.fillText(t, (W - w) / 2, 52);
-      [['A', x.sc.A], ['B', x.sc.B]].forEach(([s, v], j) => { cx.font = `8px ${PIX}`; cx.fillStyle = COLORS[s].ui; const n = T[s].name.toUpperCase(); cx.fillText(n.length > 22 ? n.slice(0, 21) + '…' : n, 24, 92 + j * 24); cx.font = `16px ${PIX}`; const vs = String(v); cx.fillText(vs, W - 24 - cx.measureText(vs).width, 96 + j * 24); });
-      cx.font = `8px ${PIX}`; cx.fillStyle = '#a4a4d8'; const f = `FANTASY ${x.fa.toFixed(2)} - ${x.fb.toFixed(2)}`; w = cx.measureText(f).width; cx.fillText(f, (W - w) / 2, 156); return;
+      const x = sc.x, title = x.kind === 'final' ? 'FINAL' : x.kind === 'half' ? 'HALFTIME' : x.q === 1 ? 'END OF 1ST' : 'END OF 3RD';
+      cx.fillStyle = '#000'; cx.fillRect(0, 0, W, H);
+      cx.font = `16px ${PIX}`; cx.fillStyle = '#f8b800'; let w = cx.measureText(title).width; cx.fillText(title, (W - w) / 2, 40);
+      [['A', x.sc.A, x.fa], ['B', x.sc.B, x.fb]].forEach(([s, v, f], j) => {
+        cx.font = `8px ${PIX}`; cx.fillStyle = COLORS[s].ui; const n = T[s].name.toUpperCase(); cx.fillText(n.length > 20 ? n.slice(0, 19) + '…' : n, 24, 76 + j * 30);
+        cx.fillStyle = '#a4a4d8'; cx.fillText(`FANTASY ${f.toFixed(1)}`, 24, 88 + j * 30);
+        cx.font = `16px ${PIX}`; cx.fillStyle = COLORS[s].ui; const vs = String(v); cx.fillText(vs, W - 24 - cx.measureText(vs).width, 88 + j * 30);
+      });
+      if (x.thru) { cx.font = `8px ${PIX}`; cx.fillStyle = '#fcfcfc'; const t = x.thru.toUpperCase(); w = cx.measureText(t).width; cx.fillText(t, Math.max(4, (W - w) / 2), 156); }
+      return;
     }
     const ball = sc && sc.ball ? sc.ball(p) : [wx(50), MID - 6, 0];
     const target = sc && sc.camBall ? ball[0] : (sc && sc.carrier ? sc.carrier.f(p)[0] : ball[0]);

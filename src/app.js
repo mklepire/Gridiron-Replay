@@ -150,54 +150,55 @@ function card(id, week, { m, g }, star) {
 }
 
 // ---------- watch
+const shortText = x => {
+  const t = x.text; let m;
+  if (x.kind === 'kickoff') return 'Kickoff · touchback';
+  if (x.kind === 'punt') return (m = t.match(/Punt, (\d+)/)) ? `Punt, ${m[1]}` : 'Punt';
+  if (x.kind === 'fg') return t.replace(/-yard field goal is GOOD/, '-yd field goal — good');
+  if (x.kind === 'pat') return /NO GOOD/.test(t) ? 'Extra point — no good' : 'Extra point — good';
+  if (x.kind === 'td_score') return t;
+  return t.replace(/ to /, ' → ').replace(/ runs for /, ' run, ').replace(/ scrambles for /, ' scramble, ').replace(/ (yds|yd)\b/, '').replace(/ sacked by the .*?, loss of (\d+)/, ' sacked, −$1').replace(' — TOUCHDOWN', ' · TD');
+};
 async function watch(id, week, mid) {
   app.innerHTML = '<p class="loading">Setting up the field…</p>';
   const ctx = await loadLeague(id);
   const list = await weekGames(id, ctx, week);
   const hit = list.find(x => x.m.id === mid);
   if (!hit) throw new Error('not-found');
-  const { g } = hit, T = g.teams, S = g.snaps;
+  const { g } = hit, T = g.teams, S = g.snaps, FINAL = S.length - 1;
   document.title = `${T.A.name} vs ${T.B.name} · Gridiron Replay`;
   app.innerHTML = `
   <a class="back" href="#/l/${encodeURIComponent(id)}/w/${week}">← ${esc(ctx.L.league.name)} · Week ${week}</a>
   <div class="cab">
     <div class="board">
-      <div class="tm a" id="tA"><div class="nm">${esc(T.A.name)}<span class="pb"></span></div><div class="sc" id="sA">0</div><div class="fp" id="fA">FAN 0.00</div></div>
+      <div class="tm a" id="tA"><div class="nm">${esc(T.A.name)}<span class="pb"></span></div><div class="sc" id="sA">0</div></div>
       <div class="ctr"><div class="q" id="qc">1ST 15:00</div><div class="dd" id="dd"></div></div>
-      <div class="tm b" id="tB"><div class="nm"><span class="pb"></span>${esc(T.B.name)}</div><div class="sc" id="sB">0</div><div class="fp" id="fB">FAN 0.00</div></div>
+      <div class="tm b" id="tB"><div class="nm"><span class="pb"></span>${esc(T.B.name)}</div><div class="sc" id="sB">0</div></div>
     </div>
     <div class="prog"><i id="prog"></i></div>
     <canvas id="cv" width="320" height="180" aria-label="8-bit football field"></canvas>
   </div>
-  <div class="dialog"><div class="line" id="line">Press start.<span class="cursor"></span></div><div class="call" id="call"></div><div class="meta" id="meta"></div></div>
+  <div class="caption" id="cap"><span class="line">Press play for kickoff.</span></div>
   <div class="controls">
-    <button class="go" id="play">▶ Start</button>
-    <span class="seg" role="group" aria-label="Speed"><button data-s="1" aria-pressed="false">1×</button><button data-s="2" aria-pressed="true">2×</button><button data-s="4" aria-pressed="false">4×</button></span>
+    <button class="go" id="play">▶ Play</button>
     <span class="seg" role="group" aria-label="Mode"><button data-m="highlights" aria-pressed="true">Highlights</button><button data-m="full" aria-pressed="false">Full game</button></span>
-    <button id="nexts">Next score</button>
-    <button id="snd" aria-pressed="false">Sound off</button>
-    <button id="share">Share</button>
+    <button id="nexts" aria-label="Next score">⏭ Score</button>
+    <button id="gear" aria-expanded="false" aria-controls="settings" title="Settings">⚙</button>
   </div>
-  <section class="panel"><h2>The story</h2><ul class="story">${g.story.map(s => `<li><span class="k">${esc({ mvp: 'MVP', comeback: 'Comeback', close: 'Nail-biter', blowout: 'Blowout', dud: 'Dud', bench: 'Bench' }[s.type] || s.type)}</span><span>${esc(s.text)}</span></li>`).join('')}</ul></section>
-  <div class="grid2"><section class="panel la" id="la"></section><section class="panel lb" id="lb"></section></div>
-  <details class="panel"><summary>How this game is made</summary><ol>
-    <li>Scores are relative to your league this season${hit.scale ? ` (average ${hit.scale.mu.toFixed(1)}, typical swing ±${hit.scale.sd.toFixed(1)})` : ''}. An average fantasy score plays out as ${NFL_AVG} points, and each typical swing above or below moves it about ${NFL_SD}. The fantasy winner always wins.</li>
-    <li>The NFL week is laid across the game clock: Thursday night opens the 1st quarter, Sunday's games fill the middle, Monday night closes the 4th.</li>
-    <li>Each team scores when its fantasy total got there in real life, so comebacks land when they actually happened.</li>
-    <li>Touches, yards and touchdowns go to starters by fantasy points, leaning on whoever was producing at that point of the week. Running and catching styles come from each player's real stat line.</li>
-    <li>D/ST points turn into sacks and takeaways. Every play is fictional.</li>
-  </ol></details>`;
+  <div class="settings" id="settings" hidden>
+    <span class="seg" role="group" aria-label="Speed"><button data-s="1" aria-pressed="true">1×</button><button data-s="2" aria-pressed="false">2×</button><button data-s="4" aria-pressed="false">4×</button></span>
+    <button id="snd" aria-pressed="false">Sound off</button>
+  </div>
+  <p class="spoil"><button class="linkish" id="skip">Skip to the recap (spoilers)</button></p>
+  <div id="recap" hidden></div>`;
   const $ = i => document.getElementById(i);
-  const lineup = s => `<h2>${esc(T[s].name)}<span class="r" id="lt${s}">0.00</span></h2><table><thead><tr><th>No</th><th>Player</th><th style="text-align:right">Fantasy</th></tr></thead><tbody>` +
-    T[s].players.map((p, i) => `<tr><td class="num">${p.num ? '#' + esc(p.num) : esc(p.pos)}</td><td>${esc(p.name)} <span class="muted">${esc(p.pos)}${p.team ? ' · ' + esc(p.team) : ''}</span><br><span class="bx" id="bx${s}${i}"></span></td><td class="pts" id="pp${s}${i}">0.0</td></tr>`).join('') + '</tbody></table>';
-  $('la').innerHTML = lineup('A'); $('lb').innerHTML = lineup('B');
 
-  const box = upto => {
+  // final box score + recap, revealed at the final whistle
+  const box = () => {
     const b = { A: T.A.players.map(() => ({})), B: T.B.players.map(() => ({})) }, def = { A: {}, B: {} };
-    for (let j = 0; j <= upto; j++) for (const [s, i, k, y, td] of S[j].st) {
+    for (const x of S) for (const [s, i, k, y, td] of x.st) {
       if (i === 'def') { def[s][k] = (def[s][k] || 0) + 1; continue; }
-      const o = b[s][i]; if (!o) continue;
-      const add = (key, v) => o[key] = (o[key] || 0) + v;
+      const o = b[s][i]; if (!o) continue; const add = (key, v) => o[key] = (o[key] || 0) + v;
       if (k === 'pass') { add('att', 1); add('cmp', 1); add('py', y); add('ptd', td); } else if (k === 'inc') add('att', 1);
       else if (k === 'rush') { add('ru', 1); add('ry', y); add('rtd', td); } else if (k === 'rec') { add('rec', 1); add('rey', y); add('retd', td); }
       else if (k === 'fg') add('fg', 1); else if (k === 'xp') add('xp', 1);
@@ -206,44 +207,60 @@ async function watch(id, week, mid) {
   };
   const line = o => { const out = []; if (o.att) out.push(`${o.cmp || 0}/${o.att}, ${o.py || 0} yds${o.ptd ? `, ${o.ptd} TD` : ''}`); if (o.ru) out.push(`${o.ru} car, ${o.ry} yds${o.rtd ? `, ${o.rtd} TD` : ''}`); if (o.rec) out.push(`${o.rec} rec, ${o.rey} yds${o.retd ? `, ${o.retd} TD` : ''}`); if (o.fg || o.xp) out.push(`${o.fg || 0} FG, ${o.xp || 0} XP`); return out.join(' · '); };
   const dline = d => { const o = []; if (d.sack) o.push(`${d.sack} sack${d.sack > 1 ? 's' : ''}`); const ta = (d.int || 0) + (d.fum || 0); if (ta) o.push(`${ta} takeaway${ta > 1 ? 's' : ''}`); return o.join(' · '); };
-
-  let typer = null;
-  const showCall = i => {
-    clearInterval(typer); const x = S[i];
-    const pre = x.down && ['play', 'td', 'sack'].includes(x.kind) ? `${ord(x.down)} & ${x.togo == null || x.s0 + x.togo >= 100 ? 'GOAL' : x.togo}: ` : '';
-    const txt = (x.kind === 'final' ? `FINAL: ${T.A.name} ${x.sc.A}, ${T.B.name} ${x.sc.B}` : x.kind === 'half' ? `HALFTIME: ${T.A.name} ${x.sc.A}, ${T.B.name} ${x.sc.B}` : pre + x.text).toUpperCase();
-    const el = $('line'); el.className = 'line ' + (x.off || '');
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) el.innerHTML = esc(txt) + '<span class="cursor"></span>';
-    else { let n = 0; typer = setInterval(() => { n += 2; el.innerHTML = esc(txt.slice(0, n)) + '<span class="cursor"></span>'; if (n >= txt.length) clearInterval(typer); }, 18); }
-    $('call').innerHTML = g.calls[i] ? `<b>BOOTH</b>${esc(g.calls[i])}` : '';
-    const d = new Date(x.real); const when = isNaN(d) ? '' : d.toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' });
-    $('meta').textContent = `${when ? `Real-world clock: ${when} · ` : ''}Fantasy ${x.fa.toFixed(1)}–${x.fb.toFixed(1)}`;
+  let recapShown = false;
+  const showRecap = () => {
+    if (recapShown) return; recapShown = true; $('skip').parentElement.hidden = true;
+    const bx = box(), win = g.final.A === g.final.B ? null : g.final.A > g.final.B ? 'A' : 'B';
+    const lineup = s => `<h2>${esc(T[s].name)}<span class="r">${T[s].fant.toFixed(2)}</span></h2><table><thead><tr><th>No</th><th>Player</th><th style="text-align:right">Fantasy</th></tr></thead><tbody>` +
+      T[s].players.map((p, i) => `<tr><td class="num">${p.num ? '#' + esc(p.num) : esc(p.pos)}</td><td>${esc(p.name)} <span class="muted">${esc(p.pos)}</span><br><span class="bx">${esc(p.pos === 'DEF' ? dline(bx.def[s]) : line(bx.b[s][i]))}</span></td><td class="pts">${p.pts.toFixed(1)}</td></tr>`).join('') + '</tbody></table>';
+    $('recap').innerHTML = `
+    <section class="panel final">
+      <h2>Final</h2>
+      <p class="fs"><span class="A">${esc(T.A.name)} ${g.final.A}</span><span class="dash">–</span><span class="B">${g.final.B} ${esc(T.B.name)}</span></p>
+      <p class="muted">Fantasy ${T.A.fant.toFixed(2)} – ${T.B.fant.toFixed(2)}${win ? ` · ${esc(T[win].name)} win` : ''}</p>
+      <ul class="story">${g.story.map(s => `<li><span class="k">${esc({ mvp: 'MVP', comeback: 'Comeback', close: 'Nail-biter', blowout: 'Blowout', dud: 'Dud', bench: 'Bench' }[s.type] || s.type)}</span><span>${esc(s.text)}</span></li>`).join('')}</ul>
+      <p><button class="go" id="share">Share this game</button> <button id="again">↺ Watch again</button></p>
+    </section>
+    <div class="grid2"><section class="panel la">${lineup('A')}</section><section class="panel lb">${lineup('B')}</section></div>
+    <details class="panel"><summary>How this game is made</summary><ol>
+      <li>Scores are relative to your league this season${hit.scale ? ` (average ${hit.scale.mu.toFixed(1)}, typical swing ±${hit.scale.sd.toFixed(1)})` : ''}. An average fantasy score plays out as ${NFL_AVG} points, and each typical swing above or below moves it about ${NFL_SD}. The fantasy winner always wins.</li>
+      <li>The NFL week is laid across the game clock: Thursday night opens the 1st quarter, Sunday's games fill the middle, Monday night closes the 4th.</li>
+      <li>Each team scores when its fantasy total got there in real life, so comebacks land when they actually happened.</li>
+      <li>Touches, yards and touchdowns go to starters by fantasy points, leaning on whoever was producing at that point of the week. Running and catching styles come from each player's real stat line.</li>
+      <li>D/ST points turn into sacks and takeaways. Every play is fictional.</li>
+    </ol></details>`;
+    $('recap').hidden = false;
+    $('share').onclick = async () => {
+      const url = location.href, text = `${T.A.name} ${g.final.A}, ${T.B.name} ${g.final.B}. Watch the Gridiron Replay:`;
+      try { if (navigator.share) { await navigator.share({ title: 'Gridiron Replay', text, url }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+      try { await navigator.clipboard.writeText(url); toast('Link copied'); } catch (e) { prompt('Copy this link:', url); }
+    };
+    $('again').onclick = () => { player.seek(0); window.scrollTo({ top: 0, behavior: 'smooth' }); player.play(); };
   };
-  const update = ({ done, next, animated, progress }) => {
+
+  // one caption at a time: the play, then the booth on big moments
+  const cap = $('cap');
+  const showPlay = i => { const x = S[i]; if (['half', 'qtr', 'final'].includes(x.kind)) return; cap.className = 'caption ' + (x.off || ''); cap.innerHTML = `<span class="line">${esc(shortText(x))}</span>`; };
+  const showBooth = i => { if (!g.calls[i]) return false; cap.className = 'caption booth'; cap.innerHTML = `<span class="tagb">BOOTH</span><span class="said">${esc(g.calls[i])}</span>`; return true; };
+  const update = ({ done, next, progress }) => {
     const x = done >= 0 ? S[done] : null, sc = x ? x.sc : { A: 0, B: 0 };
-    for (const s of ['A', 'B']) { const el = $('s' + s), v = String(sc[s]); if (el.textContent !== v) { el.textContent = v; if (animated) { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); } } }
-    $('fA').textContent = 'FAN ' + (x ? x.fa : 0).toFixed(2); $('fB').textContent = 'FAN ' + (x ? x.fb : 0).toFixed(2);
-    $('ltA').textContent = (x ? x.fa : 0).toFixed(2); $('ltB').textContent = (x ? x.fb : 0).toFixed(2);
-    $('qc').textContent = !x ? '1ST 15:00' : x.kind === 'final' ? 'FINAL' : x.kind === 'half' ? 'HALFTIME' : `${ord(x.q)} ${x.clk}`;
+    for (const s of ['A', 'B']) { const el = $('s' + s), v = String(sc[s]); if (el.textContent !== v) { el.textContent = v; el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); } }
+    $('qc').textContent = !x ? '1ST 15:00' : x.kind === 'final' ? 'FINAL' : x.kind === 'half' ? 'HALFTIME' : x.kind === 'qtr' ? `END ${ord(x.q)}` : `${ord(x.q)} ${x.clk}`;
     const nx = S[next], showDD = nx && nx.down && ['play', 'td', 'sack'].includes(nx.kind);
     $('dd').textContent = showDD ? `${ord(nx.down)} & ${nx.togo == null || nx.s0 + nx.togo >= 100 ? 'GOAL' : nx.togo}` : '';
     const po = (nx && nx.off) || (x && x.off); $('tA').classList.toggle('has', po === 'A'); $('tB').classList.toggle('has', po === 'B');
     $('prog').style.width = (progress * 100) + '%';
-    const pp = x ? x.pp : { A: T.A.players.map(() => 0), B: T.B.players.map(() => 0) }, bx = box(Math.max(-1, done));
-    for (const s of ['A', 'B']) T[s].players.forEach((p, i) => { $('pp' + s + i).textContent = (pp[s][i] ?? 0).toFixed(1); $('bx' + s + i).textContent = p.pos === 'DEF' ? dline(bx.def[s]) : line(bx.b[s][i]); });
-    if (x && !animated) showCall(done);
+    if (done === FINAL) showRecap();
   };
-  const setPlayBtn = (on, ended) => { $('play').textContent = on ? '❚❚ Pause' : ended ? '↺ Replay' : '▶ Start'; };
+  const setPlayBtn = (on, ended) => { $('play').textContent = on ? '❚❚ Pause' : ended ? '↺ Replay' : '▶ Play'; };
   try { await document.fonts?.load('8px "Press Start 2P"'); } catch (e) { }
-  player = new Player($('cv'), g, { update, call: i => showCall(i), state: setPlayBtn });
+  player = new Player($('cv'), g, { update, call: showPlay, booth: showBooth, state: setPlayBtn });
+  player.speed = 1;
   $('play').onclick = () => player.running ? player.pause() : player.play();
   $('nexts').onclick = () => player.nextScore();
+  $('skip').onclick = () => { showRecap(); $('recap').scrollIntoView({ behavior: 'smooth' }); };
+  $('gear').onclick = () => { const s = $('settings'); s.hidden = !s.hidden; $('gear').setAttribute('aria-expanded', String(!s.hidden)); };
   document.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { player.speed = +b.dataset.s; document.querySelectorAll('[data-s]').forEach(x => x.setAttribute('aria-pressed', x === b)); });
   document.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { player.setMode(b.dataset.m); document.querySelectorAll('[data-m]').forEach(x => x.setAttribute('aria-pressed', x === b)); });
   $('snd').onclick = () => { const on = !player.sound; player.enableSound(on); $('snd').setAttribute('aria-pressed', on); $('snd').textContent = on ? 'Sound on' : 'Sound off'; };
-  $('share').onclick = async () => {
-    const url = location.href, text = `${T.A.name} ${g.final.A}, ${T.B.name} ${g.final.B} — watch the Gridiron Replay recap`;
-    try { if (navigator.share) { await navigator.share({ title: 'Gridiron Replay', text, url }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
-    try { await navigator.clipboard.writeText(url); toast('Link copied'); } catch (e) { prompt('Copy this link:', url); }
-  };
 }

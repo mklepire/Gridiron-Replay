@@ -308,9 +308,16 @@ export function generateGame(input) {
       kickNext = false;
     }
   });
-  const hs = snaps.findIndex(x => x.gc >= 1800);
-  if (hs > 0) { const h = snaps[hs - 1]; snaps.splice(hs, 0, { gc: 1800, q: 2, clk: '0:00', off: null, kind: 'half', text: 'Halftime', s0: 50, s1: 50, down: null, togo: null, sc: { ...h.sc }, fa: +fantAt('A', 1800).toFixed(2), fb: +fantAt('B', 1800).toFixed(2), real: clock.toReal(1800), st: [], big: false }); }
-  snaps.push({ gc: GAME_LEN, q: 4, clk: '0:00', off: null, kind: 'final', text: 'FINAL', s0: 50, s1: 50, down: null, togo: null, sc: { ...score }, fa: +T.A.fant.toFixed(2), fb: +T.B.fant.toFixed(2), real: clock.toReal(GAME_LEN), st: [], big: true });
+  // break cards: where the real week stood at the end of each quarter
+  const NICE = { 'Thursday night': "Thursday night's game", 'Sunday morning': "Sunday's morning game", 'Sunday early': "Sunday's early games", 'Sunday late': "Sunday's late games", 'Sunday night': 'Sunday night', 'Monday night': 'Monday night' };
+  const thru = gc => { const s = (clock.slots || []).filter(x => x.g0 < gc - 1).pop(); if (!s) return ''; const nm = NICE[s.label] || s.label; return gc >= s.g1 - 20 ? `Through ${nm}` : `Midway through ${nm}`; };
+  const card = (gc, q, kind, text, sc) => ({ gc, q, clk: '0:00', off: null, kind, text, s0: 50, s1: 50, down: null, togo: null, sc: { ...sc }, fa: +fantAt('A', gc).toFixed(2), fb: +fantAt('B', gc).toFixed(2), real: clock.toReal(gc), thru: thru(gc), st: [], big: kind === 'final' });
+  for (const [gc, q, kind, text] of [[900, 1, 'qtr', 'End of the 1st quarter'], [1800, 2, 'half', 'Halftime'], [2700, 3, 'qtr', 'End of the 3rd quarter']]) {
+    const k = snaps.findIndex(x => x.gc >= gc);
+    if (k > 0) snaps.splice(k, 0, card(gc, q, kind, text, snaps[k - 1].sc));
+  }
+  snaps.push(card(GAME_LEN, 4, 'final', 'FINAL', score));
+  snaps[snaps.length - 1].thru = 'Through Monday night';
   for (const x of snaps) x.pp = ppAt(x.gc);
 
   const story = storylines(T, input, curve, GRID, W, fantAt, clock);
@@ -371,7 +378,7 @@ function cutHighlights(snaps) {
       keep.add(i);
       for (let j = i + 1; j < Math.min(snaps.length, i + 3); j++) if (['td_score', 'two'].includes(snaps[j].kind) || (snaps[j].kind === 'pat' && /NO GOOD/.test(snaps[j].text))) keep.add(j);
     }
-    if (['turnover', 'half', 'final'].includes(x.kind) || (x.kind === 'sack' && /SAFETY/.test(x.text))) keep.add(i);
+    if (['turnover', 'half', 'qtr', 'final'].includes(x.kind) || (x.kind === 'sack' && /SAFETY/.test(x.text))) keep.add(i);
   });
   return [...keep].sort((a, b) => a - b);
 }
@@ -401,7 +408,8 @@ function commentary(snaps, T, story, rng) {
       const d = dud.find(y => y.team === s);
       if (d && rng() < .6) line += ` Rough day for this offense — ${last(d.player)} has ${d.pts.toFixed(1)} to show for it.`;
     } else if (x.kind === 'half') {
-      line = `Halftime: ${T.A.name} ${x.sc.A}, ${T.B.name} ${x.sc.B}. In the real world, that's through ${new Date(x.real).toLocaleString('en-US', { weekday: 'long', hour: 'numeric', minute: '2-digit' })}.`;
+      const L = lead(x.sc);
+      line = L ? rng.pick([`${T[L].name} take a ${Math.abs(x.sc.A - x.sc.B)}-point lead into the locker room.`, `Halftime, and ${T[L].name} are in control for now.`]) : `All square at the half.`;
     } else if (x.kind === 'final') {
       const L = lead(x.sc);
       line = L ? `Final: ${T[L].name} ${Math.max(x.sc.A, x.sc.B)}, ${T[O[L]].name} ${Math.min(x.sc.A, x.sc.B)}.` : `It ends tied at ${x.sc.A}.`;
