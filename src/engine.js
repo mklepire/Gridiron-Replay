@@ -108,7 +108,9 @@ export function generateGame(input) {
   const target = { A: footballScore(T.A.fant, input.scale), B: footballScore(T.B.fant, input.scale) };
   const W = T.A.fant === T.B.fant ? null : (T.A.fant > T.B.fant ? 'A' : 'B');
   for (const s of ['A', 'B']) if (target[s] === 1) target[s] = 3; // no way to score exactly 1
-  if (W && target[W] <= target[O[W]]) target[W] = target[O[W]] + 3; // the fantasy winner always wins (by at least a field goal)
+  // the fantasy winner always wins: if rounding made it a tie (or flipped it), the winner gets one more point.
+  // 1 can't be scored, so a 0-0 rounds to a 3-0 field goal instead.
+  if (W && target[W] <= target[O[W]]) target[W] = target[O[W]] + 1 === 1 ? 3 : target[O[W]] + 1;
   if (!W) target.B = target.A; // a true fantasy tie stays tied
   const pieces = { A: decompose(target.A), B: decompose(target.B) };
 
