@@ -101,10 +101,29 @@ async function styles(gsis) {
   return byWeek;
 }
 
-const { out, gsis } = await players();
+// gsis (NFL) id -> Sleeper id, merged from every source we have; Sleeper's own gsis_id field is often blank
+async function idMap(fromSleeper) {
+  const m = { ...fromSleeper };
+  try {
+    const ids = parseCSV(await get('https://raw.githubusercontent.com/dynastyprocess/data/master/files/db_playerids.csv'));
+    for (const r of ids) if (r.gsis_id && r.gsis_id !== 'NA' && r.sleeper_id && r.sleeper_id !== 'NA') m[r.gsis_id] ||= r.sleeper_id;
+  } catch (e) { console.warn('dynastyprocess ids unavailable', e.message); }
+  try {
+    const ros = parseCSV(await get(`${NFLVERSE}/rosters/roster_${SEASON}.csv`));
+    for (const r of ros) if (r.gsis_id && r.sleeper_id && r.sleeper_id !== 'NA') m[r.gsis_id] ||= r.sleeper_id;
+  } catch (e) { console.warn('nflverse roster unavailable', e.message); }
+  return m;
+}
+
 await fs.mkdir('data/styles', { recursive: true });
-await fs.writeFile('data/players.json', JSON.stringify(out));
-await fs.writeFile('data/schedule.json', JSON.stringify(await schedule()));
-const st = await styles(gsis);
+let gsis = {};
+if (!process.env.STYLES_ONLY) {
+  const r = await players(); gsis = r.gsis;
+  await fs.writeFile('data/players.json', JSON.stringify(r.out));
+  await fs.writeFile('data/schedule.json', JSON.stringify(await schedule()));
+}
+const map = await idMap(gsis);
+console.log('gsis->sleeper ids', Object.keys(map).length);
+const st = await styles(map);
 for (const [w, v] of Object.entries(st)) await fs.writeFile(`data/styles/${w}.json`, JSON.stringify(v));
-console.log('weeks with styles:', Object.keys(st).join(','));
+console.log('weeks with styles:', Object.entries(st).map(([w, v]) => `${w}:${Object.keys(v).length}`).join(' '));
