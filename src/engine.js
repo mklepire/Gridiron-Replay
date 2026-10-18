@@ -309,15 +309,16 @@ export function generateGame(input) {
     }
   });
   // break cards: where the real week stood at the end of each quarter
-  const NICE = { 'Thursday night': "Thursday night's game", 'Sunday morning': "Sunday's morning game", 'Sunday early': "Sunday's early games", 'Sunday late': "Sunday's late games", 'Sunday night': 'Sunday night', 'Monday night': 'Monday night' };
-  const thru = gc => { const s = (clock.slots || []).filter(x => x.g0 < gc - 1).pop(); if (!s) return ''; const nm = NICE[s.label] || s.label; return gc >= s.g1 - 20 ? `Through ${nm}` : `Midway through ${nm}`; };
+  // describe the last fully finished window of real games, in plain terms
+  const NICE = { 'Thursday night': 'Thursday night', 'Sunday morning': 'Sunday morning', 'Sunday early': "Sunday's early games", 'Sunday late': 'Sunday afternoon', 'Sunday night': 'Sunday', 'Monday night': 'Monday night', Saturday: 'Saturday', Friday: 'Friday' };
+  const thru = gc => { const s = (clock.slots || []).filter(x => gc >= x.g0 + .85 * (x.g1 - x.g0)).pop(); return s ? `Through ${NICE[s.label] || s.label}` : ''; };
   const card = (gc, q, kind, text, sc) => ({ gc, q, clk: '0:00', off: null, kind, text, s0: 50, s1: 50, down: null, togo: null, sc: { ...sc }, fa: +fantAt('A', gc).toFixed(2), fb: +fantAt('B', gc).toFixed(2), real: clock.toReal(gc), thru: thru(gc), st: [], big: kind === 'final' });
   for (const [gc, q, kind, text] of [[900, 1, 'qtr', 'End of the 1st quarter'], [1800, 2, 'half', 'Halftime'], [2700, 3, 'qtr', 'End of the 3rd quarter']]) {
     const k = snaps.findIndex(x => x.gc >= gc);
     if (k > 0) snaps.splice(k, 0, card(gc, q, kind, text, snaps[k - 1].sc));
   }
   snaps.push(card(GAME_LEN, 4, 'final', 'FINAL', score));
-  snaps[snaps.length - 1].thru = 'Through Monday night';
+  snaps[snaps.length - 1].thru = '';
   for (const x of snaps) x.pp = ppAt(x.gc);
 
   const story = storylines(T, input, curve, GRID, W, fantAt, clock);
