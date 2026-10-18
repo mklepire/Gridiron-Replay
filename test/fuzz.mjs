@@ -66,8 +66,8 @@ for (let n = 0; n < N; n++) {
     try { g = generateGame(engineInput('fuzz' + n, week, m, SCHED, {}, scale)); } catch (e) { fail('engine threw: ' + e.message, info); continue; }
     if (g.final.A !== g.target.A || g.final.B !== g.target.B) fail('final != target', info + JSON.stringify([g.final, g.target]));
     const fa = m.A.starters.reduce((a, p) => a + p.pts, 0), fb = m.B.starters.reduce((a, p) => a + p.pts, 0);
-    if (Math.abs(fa - fb) > 1e-9 && (fa > fb) !== (g.final.A > g.final.B)) fail('winner flipped', info + ` ${fa} ${fb} ${JSON.stringify(g.final)}`);
-    if (Math.abs(fa - fb) < 1e-9 && g.final.A !== g.final.B) fail('tie not tied', info);
+    if (Math.abs(fa - fb) >= .005 && (fa > fb) !== (g.final.A > g.final.B)) fail('winner flipped', info + ` ${fa} ${fb} ${JSON.stringify(g.final)}`);
+    if (Math.abs(fa - fb) < .005 && g.final.A !== g.final.B) fail('tie not tied', info);
     let prev = -1;
     for (const x of g.snaps) {
       if (/undefined|NaN|null|\[object/.test(x.text)) fail('bad text: ' + x.text, info);

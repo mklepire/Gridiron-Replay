@@ -106,7 +106,7 @@ export function generateGame(input) {
 
   // final score
   const target = { A: footballScore(T.A.fant, input.scale), B: footballScore(T.B.fant, input.scale) };
-  const W = T.A.fant === T.B.fant ? null : (T.A.fant > T.B.fant ? 'A' : 'B');
+  const W = Math.abs(T.A.fant - T.B.fant) < .005 ? null : (T.A.fant > T.B.fant ? 'A' : 'B');
   for (const s of ['A', 'B']) if (target[s] === 1) target[s] = 3; // no way to score exactly 1
   // the fantasy winner always wins: if rounding made it a tie (or flipped it), the winner gets one more point.
   // 1 can't be scored, so a 0-0 rounds to a 3-0 field goal instead.
