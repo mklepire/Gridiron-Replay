@@ -72,7 +72,7 @@ function showError(e) {
 
 // ---------- home
 function home() {
-  document.title = 'Pixel Bowl';
+  document.title = 'Gridiron Replay';
   const recent = store.get('recent', []);
   app.innerHTML = `
   <section class="hero">
@@ -123,7 +123,7 @@ async function league(id, week) {
   if (!week) week = ctx.current;
   if (!ctx.demo) { const r = store.get('recent', []).filter(x => x.id !== id); r.unshift({ id, name: ctx.L.league.name }); store.set('recent', r.slice(0, 5)); }
   const list = await weekGames(id, ctx, week);
-  document.title = `${ctx.L.league.name} · Week ${week} · Pixel Bowl`;
+  document.title = `${ctx.L.league.name} · Week ${week} · Gridiron Replay`;
   const top = gotw(list);
   const live = !ctx.demo && week === ctx.current && (() => { const g = (SCHEDULE.weeks || {})[week] || []; return g.length && Date.now() < Math.max(...g.map(x => Date.parse(x[2]))) + 3.5 * 3600e3; })();
   const ordered = top ? [top, ...list.filter(x => x !== top)] : list;
@@ -155,7 +155,7 @@ async function watch(id, week, mid) {
   const hit = list.find(x => x.m.id === mid);
   if (!hit) throw new Error('not-found');
   const { g } = hit, T = g.teams, S = g.snaps;
-  document.title = `${T.A.name} vs ${T.B.name} · Pixel Bowl`;
+  document.title = `${T.A.name} vs ${T.B.name} · Gridiron Replay`;
   app.innerHTML = `
   <a class="back" href="#/l/${encodeURIComponent(id)}/w/${week}">← ${esc(ctx.L.league.name)} · Week ${week}</a>
   <div class="cab">
@@ -240,8 +240,8 @@ async function watch(id, week, mid) {
   document.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { player.setMode(b.dataset.m); document.querySelectorAll('[data-m]').forEach(x => x.setAttribute('aria-pressed', x === b)); });
   $('snd').onclick = () => { const on = !player.sound; player.enableSound(on); $('snd').setAttribute('aria-pressed', on); $('snd').textContent = on ? 'Sound on' : 'Sound off'; };
   $('share').onclick = async () => {
-    const url = location.href, text = `${T.A.name} ${g.final.A}, ${T.B.name} ${g.final.B} — watch the Pixel Bowl recap`;
-    try { if (navigator.share) { await navigator.share({ title: 'Pixel Bowl', text, url }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+    const url = location.href, text = `${T.A.name} ${g.final.A}, ${T.B.name} ${g.final.B} — watch the Gridiron Replay recap`;
+    try { if (navigator.share) { await navigator.share({ title: 'Gridiron Replay', text, url }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
     try { await navigator.clipboard.writeText(url); toast('Link copied'); } catch (e) { prompt('Copy this link:', url); }
   };
 }

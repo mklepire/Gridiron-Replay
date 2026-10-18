@@ -25,7 +25,7 @@ function parseCSV(text) {
   return rows.filter(r => r.length === head.length).map(r => Object.fromEntries(head.map((h, i) => [h, r[i]])));
 }
 async function get(url, asText = true) {
-  const r = await fetch(url, { headers: { 'user-agent': 'pixel-bowl-data' } });
+  const r = await fetch(url, { headers: { 'user-agent': 'gridiron-replay-data' } });
   if (!r.ok) throw new Error(`${r.status} ${url}`);
   return asText ? r.text() : r.json();
 }

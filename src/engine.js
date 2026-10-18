@@ -1,4 +1,4 @@
-// Pixel Bowl game engine: turns one fantasy matchup into an original football game.
+// Gridiron Replay game engine: turns one fantasy matchup into an original football game.
 //
 // What is guaranteed:
 //   1. Final score = each team's fantasy total / DIV, rounded (fantasy winner always wins).
@@ -397,7 +397,7 @@ function commentary(snaps, T, story, rng) {
       const b = bench.find(y => y.team !== L) || bench[0];
       if (b) line += ` And somewhere on the ${T[b.team].name} bench, ${b.player}'s ${b.pts.toFixed(1)} points watched the whole thing${b.flips ? '. That would have won it' : ''}.`;
     } else if (x.kind === 'kickoff' && i === 0) {
-      line = `Welcome to Pixel Bowl! ${T.A.name} against ${T.B.name}. ${mvp ? `Keep an eye on ${mvp.player}.` : ''}`;
+      line = `Welcome to Gridiron Replay! ${T.A.name} against ${T.B.name}. ${mvp ? `Keep an eye on ${mvp.player}.` : ''}`;
     }
     if (line) calls[i] = line;
   });

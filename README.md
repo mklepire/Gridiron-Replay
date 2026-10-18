@@ -1,4 +1,4 @@
-# Pixel Bowl
+# Gridiron Replay
 
 Your Sleeper fantasy matchup, played as an 8-bit football game.
 
