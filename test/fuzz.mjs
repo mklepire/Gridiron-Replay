@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import { generateGame } from '../src/engine.js';
 import { pairUp, engineInput, leagueScale } from '../src/sleeper.js';
+import { buildRecords } from '../src/records.js';
 
 // minimal browser stand-ins for the renderer
 globalThis.matchMedia = () => ({ matches: false });
@@ -80,6 +81,7 @@ for (let n = 0; n < N; n++) {
     if (!g.highlights.length) fail('no highlights', info);
     if (g.highlights.some(i => i < 0 || i >= g.snaps.length)) fail('highlight out of range', info);
     for (const i of Object.keys(g.calls)) if (/undefined|NaN/.test(g.calls[i])) fail('bad call: ' + g.calls[i], info);
+    try { const R = buildRecords([{ week: 1, m, g }]); if (!R.standings.length) fail('records: no standings', info); } catch (e) { fail('records threw: ' + e.message, info); }
     try {
       const p = new Player({ getContext: () => ctx }, g, {});
       for (let i = 0; i < g.snaps.length; i++) { const sc = p.build(i); for (const t of [0, .3, .6, .95, 1]) { p.draw(sc, t, 1000); if (sc.ball) { const b = sc.ball(t); if (b.some(Number.isNaN)) fail('NaN ball', info + ' ' + g.snaps[i].kind); } } }

@@ -172,7 +172,7 @@ export class Player {
       if (t === 'kickoff') A.forEach(a => { if (a.id !== 'rb' && a.id !== 'qb') { const isK = a.team === kt; a.bx = isK ? kx - kdir * 4 : target + kdir * 40; a.f = p => [isK ? lerp(a.bx, a.bx + kdir * 120, ease(cl((p - .2) / .8))) : a.bx, a.by]; } });
       const kick = t === 'fg' || t === 'pat';
       sc.ball = p => { if (p < .3) return [kx + kdir * 3, MID - 2, 0]; const q = cl((p - .3) / .6); return [lerp(kx, target, q), lerp(MID - 2, MID - (kick ? 18 : 0), q), Math.sin(Math.PI * Math.min(1, q * (kick ? .8 : 1))) * h]; };
-      sc.fx = t === 'kickoff' ? 'TOUCHBACK' : t === 'punt' ? (x.text.includes('Touchback') ? 'TOUCHBACK' : 'FAIR CATCH') : /NO GOOD/.test(x.text) ? 'NO GOOD!' : "IT'S GOOD!";
+      sc.fx = t === 'kickoff' ? (/Touchback/.test(x.text) ? 'TOUCHBACK' : null) : t === 'punt' ? (x.text.includes('Touchback') ? 'TOUCHBACK' : 'FAIR CATCH') : /NO GOOD/.test(x.text) ? 'NO GOOD!' : "IT'S GOOD!";
       sc.labels = [k]; sc.camBall = true;
     } else if (t === 'celebrate') {
       const prev = this.S[i - 1], pv = prev ? this.parse(prev) : {}, c = by.rb;

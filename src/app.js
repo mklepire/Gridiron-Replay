@@ -1,5 +1,6 @@
 import { generateGame, NFL_AVG, NFL_SD } from './engine.js';
 import { Player, COLORS } from './render.js';
+import { buildRecords, gameValue } from './records.js';
 import { getState, getLeague, getMatchups, getStatic, pairUp, engineInput, leagueScale } from './sleeper.js';
 
 const app = document.getElementById('app');
@@ -69,6 +70,7 @@ async function route() {
     if (h[0] === 'demo') return go('/l/demo/w/5', true);
     if (h[0] === 'l' && h[1]) {
       const id = decodeURIComponent(h[1]), week = h[2] === 'w' ? +h[3] : null, mid = h[4] === 'm' ? +h[5] : null;
+      if (h[2] === 'records') return records(id);
       if (mid != null && week) return watch(id, week, mid);
       return league(id, week);
     }
@@ -140,11 +142,22 @@ async function league(id, week) {
   app.innerHTML = `
   <section class="lhead">
     <div class="t"><span class="muted">${ctx.demo ? 'Demo league · ' : ''}${esc(ctx.L.league.season)} season</span><h1>${esc(ctx.L.league.name)}</h1></div>
-    <div class="weeksel"><label for="wk" style="margin:0">Week</label><select id="wk">${ctx.weeks.map(w => `<option value="${w}" ${w === week ? 'selected' : ''}>${w}</option>`).join('')}</select></div>
+    <div class="weeksel"><a class="btn" href="/l/${encodeURIComponent(id)}/records">Record book</a><label for="wk" style="margin:0">Week</label><select id="wk">${ctx.weeks.map(w => `<option value="${w}" ${w === week ? 'selected' : ''}>${w}</option>`).join('')}</select></div>
   </section>
   ${live ? '<p class="muted">This week is still being played. Games show the score so far.</p>' : ''}
+  ${(() => { const r = !live && list.length ? buildRecords(list.map(x => ({ week, ...x }))).potw[week] : null; return r ? `<a class="potw" href="/l/${encodeURIComponent(id)}/w/${week}/m/${r.m}"><span class="ribbon">PLAYER OF THE WEEK</span><span class="pn">${esc(r.name)}</span><span class="muted">${esc(r.team)} · ${esc(statLine(r.b))}</span></a>` : ''; })()}
   ${list.length ? `<section class="cards">${ordered.map(x => card(id, week, x, x === top)).join('')}</section>` : '<section class="panel"><p>No matchups this week.</p></section>'}`;
   document.getElementById('wk').onchange = e => { go(`/l/${encodeURIComponent(id)}/w/${e.target.value}`); };
+}
+function statLine(o) {
+  const out = [];
+  if (o.att) out.push(`${o.cmp || 0}/${o.att}, ${o.py || 0} yds${o.ptd ? `, ${o.ptd} TD` : ''}`);
+  if (o.ru) out.push(`${o.ru} car, ${o.ry} yds${o.rtd ? `, ${o.rtd} TD` : ''}`);
+  if (o.rec) out.push(`${o.rec} rec, ${o.rey} yds${o.retd ? `, ${o.retd} TD` : ''}`);
+  if (o.fg || o.xp) out.push(`${o.fg || 0} FG, ${o.xp || 0} XP`);
+  if (o.sack) out.push(`${o.sack} sack${o.sack > 1 ? 's' : ''}`);
+  if (o.to) out.push(`${o.to} takeaway${o.to > 1 ? 's' : ''}`);
+  return out.join(' · ');
 }
 function card(id, week, { m, g }, star) {
   const A = g.final.A, B = g.final.B, w = A === B ? null : A > B ? 'A' : 'B';
@@ -160,7 +173,7 @@ function card(id, week, { m, g }, star) {
 // ---------- watch
 const shortText = x => {
   const t = x.text; let m;
-  if (x.kind === 'kickoff') return 'Kickoff · touchback';
+  if (x.kind === 'kickoff') return (m = t.match(/Returned to the (\d+)/)) ? `Kickoff · returned to the ${m[1]}` : 'Kickoff · touchback';
   if (x.kind === 'punt') return (m = t.match(/Punt, (\d+)/)) ? `Punt, ${m[1]}` : 'Punt';
   if (x.kind === 'fg') return t.replace(/-yard field goal is GOOD/, '-yd field goal — good');
   if (x.kind === 'pat') return /NO GOOD/.test(t) ? 'Extra point — no good' : 'Extra point — good';
@@ -271,4 +284,49 @@ async function watch(id, week, mid) {
   document.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { player.speed = +b.dataset.s; document.querySelectorAll('[data-s]').forEach(x => x.setAttribute('aria-pressed', x === b)); });
   document.querySelectorAll('[data-m]').forEach(b => b.onclick = () => { player.setMode(b.dataset.m); document.querySelectorAll('[data-m]').forEach(x => x.setAttribute('aria-pressed', x === b)); });
   $('snd').onclick = () => { const on = !player.sound; player.enableSound(on); $('snd').setAttribute('aria-pressed', on); $('snd').textContent = on ? 'Sound on' : 'Sound off'; };
+}
+
+// ---------- record book
+async function records(id) {
+  app.innerHTML = '<p class="loading">Replaying the season…</p>';
+  const ctx = await loadLeague(id);
+  const sched = (SCHEDULE.weeks || {});
+  const done = w => { if (ctx.demo) return true; const g = sched[w] || []; return !g.length || Date.now() > Math.max(...g.map(x => Date.parse(x[2]))) + 3.5 * 3600e3 || w < ctx.current; };
+  const weeks = ctx.weeks.filter(w => w <= ctx.current && done(w));
+  const games = [];
+  for (const w of weeks) { const list = await weekGames(id, ctx, w); for (const x of list) if (x.m.A.points || x.m.B.points) games.push({ week: w, ...x }); }
+  document.title = `${ctx.L.league.name} · Record book · Gridiron Replay`;
+  if (!games.length) { app.innerHTML = `<a class="back" href="/l/${encodeURIComponent(id)}">← ${esc(ctx.L.league.name)}</a><section class="panel"><h2>Record book</h2><p>No completed games yet this season.</p></section>`; return; }
+  const R = buildRecords(games), L = `/l/${encodeURIComponent(id)}`;
+  const span = R.weeks.length > 1 ? `Weeks ${R.weeks[0]}–${R.weeks[R.weeks.length - 1]}` : `Week ${R.weeks[0]}`;
+  const who = p => `<span class="pn">${esc(p.name)}</span> <span class="muted">${esc(p.pos)} · ${esc(p.team)}</span>`;
+  const board = (title, rows, val) => `<section class="panel lead"><h2>${title}</h2><ol>${rows.map(p => `<li><span>${who(p)}</span><span class="v">${val(p)}</span></li>`).join('') || '<li class="muted">—</li>'}</ol></section>`;
+  const tds = p => (p.ptd || 0) + (p.rtd || 0) + (p.retd || 0);
+  app.innerHTML = `
+  <a class="back" href="${L}">← ${esc(ctx.L.league.name)}</a>
+  <section class="lhead"><div class="t"><span class="muted">${esc(ctx.L.league.season)} season · ${span} · ${games.length} games</span><h1>Record book</h1></div></section>
+
+  <section class="panel"><h2>Standings</h2><div class="tw"><table class="std"><thead><tr><th>Team</th><th>W-L</th><th>PF</th><th>PA</th><th title="Comeback wins">CB</th></tr></thead><tbody>
+    ${R.standings.map((t, i) => `<tr><td><span class="rk">${i + 1}</span>${esc(t.name)}</td><td>${t.w}-${t.l}${t.t ? '-' + t.t : ''}</td><td>${t.pf}</td><td>${t.pa}</td><td>${t.comebacks || ''}</td></tr>`).join('')}
+  </tbody></table></div><p class="muted small">Football points from the replayed games. CB = comeback wins.</p></section>
+
+  <section class="panel mvp"><h2>MVP race</h2><ol>${R.mvp.map((p, i) => `<li><span class="rk">${i + 1}</span><span>${who(p)}<br><span class="bx">${esc(statLine(p))}</span></span><span class="v">${p.wins}-${p.gp - p.wins}</span></li>`).join('')}</ol>
+    <p class="muted small">Ranked by total production, with a bonus for each win.</p></section>
+
+  <div class="leads">
+    ${board('Passing yards', R.leaders.passing, p => p.py)}
+    ${board('Rushing yards', R.leaders.rushing, p => p.ry)}
+    ${board('Receiving yards', R.leaders.receiving, p => p.rey)}
+    ${board('Touchdowns', R.leaders.touchdowns, tds)}
+    ${board('Longest play', R.leaders.longest, p => p.long + ' yds')}
+    ${board('Defense', R.leaders.defense, p => [p.sack ? p.sack + ' sk' : '', p.to ? p.to + ' TO' : ''].filter(Boolean).join(' · '))}
+  </div>
+
+  <div class="grid2">
+    <section class="panel"><h2>Single-game records</h2><ul class="recs">${R.singleRecs.map(r => { const x = r.rows[0]; return `<li><span class="lbl">${r.label}</span><span class="v">${r.f(x)} ${r.unit}</span><span>${esc(x.name)} <span class="muted">· ${esc(x.team)} · <a href="${L}/w/${x.week}/m/${x.m}">Week ${x.week}</a></span></span></li>`; }).join('')}</ul></section>
+    <section class="panel"><h2>Game records</h2><ul class="recs">${R.gameRecords.map(({ label, r, comeback }) => `<li><span class="lbl">${label}</span><span class="v">${comeback ? `down ${r.comeback}` : `${r.ws}–${r.ls}`}</span><span>${esc(comeback ? r.cbTeam : r.win)} <span class="muted">${comeback ? 'came back to win' : `over ${esc(r.lose)}`} · <a href="${L}/w/${r.week}/m/${r.m}">Week ${r.week}</a></span></span></li>`).join('')}</ul></section>
+  </div>
+
+  <section class="panel"><h2>Players of the week</h2><ul class="recs">${R.weeks.map(w => { const x = R.potw[w]; return x ? `<li><span class="lbl">Week ${w}</span><span>${esc(x.name)} <span class="muted">· ${esc(x.team)}</span><br><span class="bx">${esc(statLine(x.b))}</span></span><a class="v" href="${L}/w/${w}/m/${x.m}">Watch</a></li>` : ''; }).join('')}</ul></section>
+  <p class="muted small">Every stat comes from the replayed games, which are fictional. While we're still tuning the game engine, past games and these numbers can shift.</p>`;
 }

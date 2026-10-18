@@ -191,7 +191,7 @@ export function generateGame(input) {
     let share = kind === 'run' ? (st.car + .5) / (st.car + st.rec + 1) : (st.rec + .5) / (st.car + st.rec + 1);
     if (kind === 'run' && st.car < .5 && p.pos !== 'QB') share = 0;
     if (kind === 'pass' && st.rec < .5) share = .02;
-    return [p, (Math.pow(Math.max(0, base), 1.35) + .6) * share];
+    return [p, (Math.pow(Math.max(0, base), 1.15) + .6) * share];
   }).filter(x => x[1] > 0);
   const passRate = {};
   for (const s of ['A', 'B']) {
@@ -200,7 +200,7 @@ export function generateGame(input) {
   }
   const gain = (p, kind) => {
     const st = style(p); const n = kind === 'run' ? st.car : st.rec, y = kind === 'run' ? st.ry : st.rey;
-    let avg = n > 0 ? y / n : (kind === 'run' ? 4 : 9); avg = Math.max(1.5, Math.min(18, avg)) * (.8 + .4 * Math.min(1.5, p.pts / 15));
+    let avg = n > 0 ? y / n : (kind === 'run' ? 4 : 9); avg = Math.max(1.5, Math.min(16, avg)) * (.85 + .25 * Math.min(1.5, p.pts / 15));
     let g = rng.logn(Math.log(Math.max(1, avg)) - .18, .6);
     if (kind === 'run' && rng() < .15) g = rng.pick([-2, -1, 0, 1]);
     return Math.max(-3, Math.min(65, Math.round(g)));
@@ -243,7 +243,7 @@ export function generateGame(input) {
   drives.forEach((d, di) => {
     const s = d.team, dur = d.end - d.start; NOW.gc = (d.start + d.end) / 2;
     let spot;
-    if (di === 0 || kickNext || Math.abs(d.start - 1800) < 1) { push(d.start, s, 'kickoff', `${KN(O[s])} kicks off. Touchback, ${T[s].name} ball at the 25.`, 25, 25, 1, 10); spot = 25; }
+    if (di === 0 || kickNext || Math.abs(d.start - 1800) < 1) { const ret = rng() < .55 ? 25 : rng.int(18, 38); push(d.start, s, 'kickoff', ret === 25 ? `${KN(O[s])} kicks off. Touchback, ${T[s].name} ball at the 25.` : `${KN(O[s])} kicks off. Returned to the ${ret}.`, ret, ret, 1, 10); spot = ret; }
     else spot = spotNext;
     const unit = d.score ? d.score.unit : null;
     const scoring = unit === 'td' || unit === 'two' || unit === 'miss';
