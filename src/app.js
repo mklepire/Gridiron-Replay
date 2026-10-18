@@ -52,13 +52,21 @@ async function weekGames(id, ctx, week) {
 }
 
 // ---------- router
-window.addEventListener('hashchange', route);
+// real paths (/l/<id>/w/<week>/m/<matchup>) so analytics and link previews can see each page
+const go = (path, replace) => { if (replace) history.replaceState(null, '', path); else history.pushState(null, '', path); route(); };
+document.addEventListener('click', e => {
+  const a = e.target.closest && e.target.closest('a[href^="/"]');
+  if (!a || a.target || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+  e.preventDefault(); if (a.getAttribute('href') !== location.pathname) { go(a.getAttribute('href')); window.scrollTo(0, 0); }
+});
+window.addEventListener('popstate', route);
+if (location.hash.startsWith('#/')) history.replaceState(null, '', location.hash.slice(1)); // old #/ links still work
 route();
 async function route() {
   if (player) { player.destroy(); player = null; }
-  const h = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
+  const h = location.pathname.split('/').filter(Boolean);
   try {
-    if (h[0] === 'demo') return location.replace('#/l/demo/w/5');
+    if (h[0] === 'demo') return go('/l/demo/w/5', true);
     if (h[0] === 'l' && h[1]) {
       const id = decodeURIComponent(h[1]), week = h[2] === 'w' ? +h[3] : null, mid = h[4] === 'm' ? +h[5] : null;
       if (mid != null && week) return watch(id, week, mid);
@@ -69,7 +77,7 @@ async function route() {
 }
 function showError(e) {
   const nf = String(e && e.message) === 'not-found';
-  app.innerHTML = `<section class="panel"><h2>${nf ? 'League not found' : 'Something went wrong'}</h2><p>${nf ? 'Check the league ID. It is the long number in your Sleeper league link.' : 'We could not reach Sleeper. Try again in a minute.'}</p><p style="margin-top:12px"><a class="btn" href="#/">Back</a></p></section>`;
+  app.innerHTML = `<section class="panel"><h2>${nf ? 'League not found' : 'Something went wrong'}</h2><p>${nf ? 'Check the league ID. It is the long number in your Sleeper league link.' : 'We could not reach Sleeper. Try again in a minute.'}</p><p style="margin-top:12px"><a class="btn" href="/">Back</a></p></section>`;
 }
 
 // ---------- home
@@ -85,8 +93,8 @@ function home() {
       <button class="go" type="submit">Watch my league</button>
     </form>
     <p class="err" id="jerr" hidden></p>
-    <p class="muted">No login. Find the ID in the Sleeper app under League → Settings, or copy your league's link from sleeper.com. <a href="#/demo">Or watch a demo league →</a></p>
-    ${recent.length ? `<div><label>Your leagues</label><div class="recent">${recent.map(r => `<a class="btn" href="#/l/${esc(r.id)}">${esc(r.name)}</a>`).join('')}</div></div>` : ''}
+    <p class="muted">No login. Find the ID in the Sleeper app under League → Settings, or copy your league's link from sleeper.com. <a href="/demo">Or watch a demo league →</a></p>
+    ${recent.length ? `<div><label>Your leagues</label><div class="recent">${recent.map(r => `<a class="btn" href="/l/${esc(r.id)}">${esc(r.name)}</a>`).join('')}</div></div>` : ''}
   </section>
   <section class="how">
     <div class="panel"><span class="n">1 · THE SCORE</span><p>Scores are relative to your league. An average week scores like an average NFL team, about ${NFL_AVG}. Big weeks become shootouts and duds become 10-point games.</p></div>
@@ -98,7 +106,7 @@ function home() {
     const v = document.getElementById('lid').value.trim(), m = v.match(/\d{15,22}/);
     const err = document.getElementById('jerr');
     if (!m) { err.hidden = false; err.textContent = 'That doesn’t look like a Sleeper league ID. It’s a long number, like 1397412708831252480.'; return; }
-    location.hash = `#/l/${m[0]}`;
+    go(`/l/${m[0]}`);
   };
 }
 
@@ -136,11 +144,11 @@ async function league(id, week) {
   </section>
   ${live ? '<p class="muted">This week is still being played. Games show the score so far.</p>' : ''}
   ${list.length ? `<section class="cards">${ordered.map(x => card(id, week, x, x === top)).join('')}</section>` : '<section class="panel"><p>No matchups this week.</p></section>'}`;
-  document.getElementById('wk').onchange = e => { location.hash = `#/l/${id}/w/${e.target.value}`; };
+  document.getElementById('wk').onchange = e => { go(`/l/${encodeURIComponent(id)}/w/${e.target.value}`); };
 }
 function card(id, week, { m, g }, star) {
   const A = g.final.A, B = g.final.B, w = A === B ? null : A > B ? 'A' : 'B';
-  return `<a class="card ${star ? 'gotw' : ''}" href="#/l/${encodeURIComponent(id)}/w/${week}/m/${m.id}">
+  return `<a class="card ${star ? 'gotw' : ''}" href="/l/${encodeURIComponent(id)}/w/${week}/m/${m.id}">
     ${star ? '<span class="ribbon">GAME OF THE WEEK</span>' : ''}
     <div class="row"><span class="nm A">${esc(m.A.name)}</span><span class="sc ${w === 'A' ? 'win' : 'lose'}">${A}</span></div>
     <div class="row"><span class="nm B">${esc(m.B.name)}</span><span class="sc ${w === 'B' ? 'win' : 'lose'}">${B}</span></div>
@@ -157,7 +165,7 @@ const shortText = x => {
   if (x.kind === 'fg') return t.replace(/-yard field goal is GOOD/, '-yd field goal — good');
   if (x.kind === 'pat') return /NO GOOD/.test(t) ? 'Extra point — no good' : 'Extra point — good';
   if (x.kind === 'td_score') return t;
-  return t.replace(/ to /, ' → ').replace(/ runs for /, ' run, ').replace(/ scrambles for /, ' scramble, ').replace(/ (yds|yd)\b/, '').replace(/ sacked by the .*?, loss of (\d+)/, ' sacked, −$1').replace(' — TOUCHDOWN', ' · TD');
+  return t.replace(/ to /, ' → ').replace(/ runs for /, ' run, ').replace(/ scrambles for /, ' scramble, ').replace(/ (yds|yd)\b/, '').replace(/ sacked by .*?, loss of (\d+)/, ' sacked, −$1').replace(' — TOUCHDOWN', ' · TD');
 };
 async function watch(id, week, mid) {
   app.innerHTML = '<p class="loading">Setting up the field…</p>';
@@ -168,7 +176,7 @@ async function watch(id, week, mid) {
   const { g } = hit, T = g.teams, S = g.snaps, FINAL = S.length - 1;
   document.title = `${T.A.name} vs ${T.B.name} · Gridiron Replay`;
   app.innerHTML = `
-  <a class="back" href="#/l/${encodeURIComponent(id)}/w/${week}">← ${esc(ctx.L.league.name)} · Week ${week}</a>
+  <a class="back" href="/l/${encodeURIComponent(id)}/w/${week}">← ${esc(ctx.L.league.name)} · Week ${week}</a>
   <div class="cab">
     <div class="board">
       <div class="tm a" id="tA"><div class="nm">${esc(T.A.name)}<span class="pb"></span></div><div class="sc" id="sA">0</div></div>

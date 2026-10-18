@@ -1,5 +1,7 @@
 // Sleeper data access (browser) and conversion into engine input.
 const API = 'https://api.sleeper.app/v1';
+// best guess at a position when a player id is missing from our list
+const SLOTPOS = { QB: 'QB', SUPER_FLEX: 'QB', RB: 'RB', WR: 'WR', TE: 'TE', FLEX: 'WR', REC_FLEX: 'WR', WRRB_FLEX: 'RB', K: 'K', DEF: 'DEF', DL: 'DL', LB: 'LB', DB: 'DB', IDP_FLEX: 'LB' };
 const cache = new Map();
 async function j(url) {
   if (cache.has(url)) return cache.get(url);
@@ -31,7 +33,7 @@ export function pairUp(L, rows, players) {
     const name = (u && u.metadata && u.metadata.team_name) || (u ? `Team ${u.display_name}` : `Team ${r.roster_id}`);
     const pts = r.players_points || {};
     const starters = (r.starters || []).map((id, i) => {
-      const meta = players[id] || (id === '0' ? null : ['Unknown player', slots[i] && /^(QB|RB|WR|TE|K|DEF)$/.test(slots[i]) ? slots[i] : 'WR', '', '']);
+      const meta = players[id] || (id === '0' || !id ? null : ['Unknown player', SLOTPOS[slots[i]] || 'WR', '', '']);
       if (!meta) return null; // empty slot
       const p = r.starters_points ? r.starters_points[i] : pts[id];
       return { id, name: meta[0], pos: meta[1], team: meta[2], num: meta[3], pts: +(p ?? pts[id] ?? 0), slot: slots[i] || meta[1] };

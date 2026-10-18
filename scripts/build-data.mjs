@@ -9,6 +9,8 @@ const SEASON = Number(process.env.SEASON || new Date().getFullYear());
 const NFLVERSE = 'https://github.com/nflverse/nflverse-data/releases/download';
 const TEAM = { LA: 'LAR', JAC: 'JAX', WSH: 'WAS', OAK: 'LV', SD: 'LAC', STL: 'LAR' };
 const tm = t => TEAM[t] || t;
+// defensive players (IDP leagues) collapse to three groups
+const IDP = { DE: 'DL', DT: 'DL', NT: 'DL', DL: 'DL', LB: 'LB', OLB: 'LB', ILB: 'LB', MLB: 'LB', CB: 'DB', S: 'DB', SS: 'DB', FS: 'DB', DB: 'DB' };
 
 function parseCSV(text) {
   const rows = []; let row = [], f = '', q = false;
@@ -49,8 +51,9 @@ async function players() {
   try {
     const all = await get('https://api.sleeper.app/v1/players/nfl', false);
     for (const [id, p] of Object.entries(all)) {
-      const pos = p.position || (p.fantasy_positions || [])[0];
-      if (!pos || !['QB', 'RB', 'WR', 'TE', 'K', 'DEF', 'FB'].includes(pos)) continue;
+      const raw = p.position || (p.fantasy_positions || [])[0];
+      const pos = IDP[raw] || raw;
+      if (!pos || !['QB', 'RB', 'WR', 'TE', 'K', 'DEF', 'FB', 'DL', 'LB', 'DB'].includes(pos)) continue;
       if (!p.team && pos !== 'DEF' && !p.active) continue;
       const name = pos === 'DEF' ? `${p.first_name} ${p.last_name}`.trim() : (p.full_name || `${p.first_name} ${p.last_name}`);
       out[id] = [name, pos === 'FB' ? 'RB' : pos, p.team || '', p.number != null ? String(p.number) : ''];

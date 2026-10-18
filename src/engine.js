@@ -107,7 +107,8 @@ export function generateGame(input) {
   // final score
   const target = { A: footballScore(T.A.fant, input.scale), B: footballScore(T.B.fant, input.scale) };
   const W = T.A.fant === T.B.fant ? null : (T.A.fant > T.B.fant ? 'A' : 'B');
-  if (W && target[W] <= target[O[W]]) target[W] = target[O[W]] + 1;
+  for (const s of ['A', 'B']) if (target[s] === 1) target[s] = 3; // no way to score exactly 1
+  if (W && target[W] <= target[O[W]]) target[W] = target[O[W]] + 3; // the fantasy winner always wins (by at least a field goal)
   if (!W) target.B = target.A; // a true fantasy tie stays tied
   const pieces = { A: decompose(target.A), B: decompose(target.B) };
 
@@ -131,13 +132,19 @@ export function generateGame(input) {
     }
   }
   sched.sort((a, b) => a.gc - b.gc);
-  for (const x of sched) { if (x.gc < 150) x.gc = 150; if (x.gc > 1800 && x.gc < 1950) x.gc = 1950; }
-  for (let it = 0; it < 60; it++) {
-    let moved = false;
-    for (let j = 1; j < sched.length; j++) { const a = sched[j - 1], b = sched[j], gap = a.team === b.team ? 240 : 150; if (b.gc - a.gc < gap) { b.gc = Math.min(3585, a.gc + gap); moved = true; } }
-    if (!moved) break;
+  // spacing: a team needs the ball back between scores, nothing lands in the halftime gap, and all fits in 60:00
+  const HALF_LO = 1765, HALF_HI = 1950, LAST = 3550;
+  const fixHalf = (g, dir) => (g > HALF_LO && g < HALF_HI) ? (dir > 0 ? HALF_HI : HALF_LO) : g;
+  const need = sched.slice(1).reduce((s, b, j) => s + (sched[j].team === b.team ? 240 : 150), 0);
+  const squeeze = Math.min(1, (LAST - 150 - (HALF_HI - HALF_LO)) / Math.max(1, need));
+  const gapOf = (a, b) => (a.team === b.team ? 240 : 150) * squeeze;
+  for (const x of sched) x.gc = fixHalf(Math.max(150, Math.min(LAST, x.gc)), x.gc >= 1800 ? 1 : -1);
+  for (let j = 1; j < sched.length; j++) { const lo = sched[j - 1].gc + gapOf(sched[j - 1], sched[j]); if (sched[j].gc < lo) sched[j].gc = fixHalf(lo, 1); }
+  if (sched.length && sched[sched.length - 1].gc > LAST) {
+    sched[sched.length - 1].gc = LAST;
+    for (let j = sched.length - 2; j >= 0; j--) { const hi = sched[j + 1].gc - gapOf(sched[j], sched[j + 1]); if (sched[j].gc > hi) sched[j].gc = fixHalf(hi, -1); }
   }
-  for (let j = sched.length - 2; j >= 0; j--) if (sched[j + 1].gc - sched[j].gc < 150) sched[j].gc = Math.max(20, sched[j + 1].gc - 150);
+  for (const x of sched) x.gc = Math.max(60, x.gc);
   sched.sort((a, b) => a.gc - b.gc);
 
   // possessions
@@ -206,14 +213,20 @@ export function generateGame(input) {
     alloc[s] = []; cands.forEach((p, j) => { for (let k = 0; k < a[j]; k++) alloc[s].push(p); });
   }
   const tdScorer = s => {
-    if (!alloc[s].length) return T[s].skill.slice().sort((a, b) => b.pts - a.pts)[0] || T[s].qb;
+    if (!alloc[s].length) return anyCarrier(s);
     const uniq = [...new Set(alloc[s])];
     const p = uniq.sort((a, b) => (localPts(b, NOW.gc, 900, 300) + .05 * b.pts) - (localPts(a, NOW.gc, 900, 300) + .05 * a.pts))[0];
     alloc[s].splice(alloc[s].indexOf(p), 1); return p;
   };
+  const anyCarrier = s => T[s].skill.slice().sort((a, b) => b.pts - a.pts)[0] || T[s].qb || (T[s].ghost ||= { name: `${T[s].abbr} Runner`, pos: 'RB', i: -1, pts: 0, team: '', g0: 0, g1: GAME_LEN });
   const QBN = s => T[s].qb ? last(T[s].qb.name) : 'The quarterback';
   const KN = s => T[s].kicker ? last(T[s].kicker.name) : 'The kicker';
-  const DN = s => T[s].defs[0] ? (T[s].defs[0].pos === 'DEF' ? `${T[s].defs[0].team || T[s].defs[0].name} D/ST` : last(T[s].defs[0].name)) : `${T[s].abbr} defense`;
+  // who made the defensive play: "the NE D/ST", an IDP player's name, or "the ABC defense"
+  const DN = s => {
+    const ds = T[s].defs; if (!ds.length) return `the ${T[s].abbr} defense`;
+    const dst = ds.find(p => p.pos === 'DEF'); if (dst) return `the ${dst.team || dst.name} D/ST`;
+    const p = ds.slice().sort((a, b) => b.pts - a.pts)[(rng.int(0, 9) < 6 ? 0 : rng.int(0, ds.length - 1))]; return last(p.name);
+  };
 
   // ---------- snaps
   const snaps = [], score = { A: 0, B: 0 };
@@ -236,6 +249,7 @@ export function generateGame(input) {
     const plays = []; let down = 1, togo = 10, np = 0;
     const sacks = [...(d.sacks || [])], to = d.to, maxPlays = unit ? 40 : rng.int(3, 6), toAt = rng.int(1, 3);
     while (unit !== 'sf') {
+      if (np > 30) { if (goal != null && spot < goal) { plays.push({ s0: spot, down, togo, kind: 'run', p: anyCarrier(s), y: goal - spot }); spot = goal; } break; }
       if (goal != null && spot >= goal) break;
       if (goal == null && (down === 4 || (np >= maxPlays && down >= 3))) break;
       if (to && np >= toAt) break;
@@ -247,7 +261,7 @@ export function generateGame(input) {
       let kind = rng() < passRate[s] ? 'pass' : 'run';
       if (!T[s].qb) kind = 'run';
       if (kind === 'pass' && rng() < (goal != null ? .24 : .4)) { plays.push({ s0: spot, down, togo, kind: 'inc', y: 0 }); down++; continue; }
-      const ws = weights(s, kind); if (!ws.length) { plays.push({ s0: spot, down, togo, kind: 'inc', y: 0 }); down++; continue; }
+      let ws = weights(s, kind); if (!ws.length) ws = weights(s, kind === 'run' ? 'pass' : 'run'); if (!ws.length) ws = [[anyCarrier(s), 1]];
       const p = rng.weighted(ws); let y = gain(p, kind);
       if (goal != null) {
         const room = goal - spot;
@@ -266,7 +280,7 @@ export function generateGame(input) {
       const gc = d.start + dur * (j + 1) / n; NOW.gc = gc;
       const goalToGo = pl_.s0 + pl_.togo >= 100, tg = goalToGo ? null : pl_.togo;
       const lastTd = scoring && j === plays.length - 1;
-      if (pl_.kind === 'sack') return push(gc, s, 'sack', `${QBN(s)} sacked by the ${DN(pl_.by)}, loss of ${-pl_.y}`, pl_.s0, pl_.s0 + pl_.y, pl_.down, tg, [[pl_.by, 'def', 'sack', 0, 0]]);
+      if (pl_.kind === 'sack') return push(gc, s, 'sack', `${QBN(s)} sacked by ${DN(pl_.by)}, loss of ${-pl_.y}`, pl_.s0, pl_.s0 + pl_.y, pl_.down, tg, [[pl_.by, 'def', 'sack', 0, 0]]);
       if (pl_.kind === 'inc') return push(gc, s, 'play', rng.pick([`${QBN(s)} pass incomplete`, `${QBN(s)} pass broken up`, `${QBN(s)} throws it away`]), pl_.s0, pl_.s0, pl_.down, tg, T[s].qb ? [[s, T[s].qb.i, 'inc', 0, 0]] : []);
       let p = pl_.p, kind = pl_.kind;
       if (lastTd) { p = tdScorer(s); const st = style(p); kind = p === T[s].qb ? 'run' : (st.car > st.rec * 1.2 && rng() < .75) ? 'run' : (st.car < .5 ? 'pass' : (rng() < .5 ? 'run' : 'pass')); if (!T[s].qb) kind = 'run'; }
@@ -288,7 +302,7 @@ export function generateGame(input) {
       push(endgc, s, 'fg', `${KN(s)} ${dist}-yard field goal is GOOD`, spot, spot, null, null, T[s].kicker ? [[s, T[s].kicker.i, 'fg', dist, 0]] : [], true); kickNext = true;
     } else if (unit === 'sf') {
       score[s] += 2; const v = O[s];
-      push(endgc, v, 'sack', `${QBN(v)} sacked in the end zone by the ${DN(s)} — SAFETY`, 3, -1, 3, 10, [[s, 'def', 'sack', 0, 0]], true); kickNext = true;
+      push(endgc, v, 'sack', `${QBN(v)} sacked in the end zone by ${DN(s)} — SAFETY`, 3, -1, 3, 10, [[s, 'def', 'sack', 0, 0]], true); kickNext = true;
     } else if (d.final) {
       const lead = score[s] - score[O[s]];
       if (lead > 0) push(endgc, s, 'play', `${QBN(s)} takes a knee`, spot, spot);
@@ -297,7 +311,7 @@ export function generateGame(input) {
     } else if (d.half) { push(endgc, s, 'play', `${QBN(s)} takes a knee`, spot, spot); kickNext = true; }
     else if (to) {
       const [k, by] = to;
-      push(endgc, s, 'turnover', k === 'int' ? `${QBN(s)} intercepted by the ${DN(by)}!` : `Fumble! Recovered by the ${DN(by)}`, spot, spot, down, togo, [[by, 'def', k, 0, 0]], true);
+      push(endgc, s, 'turnover', k === 'int' ? `${QBN(s)} intercepted by ${DN(by)}!` : `Fumble! Recovered by ${DN(by)}`, spot, spot, down, togo, [[by, 'def', k, 0, 0]], true);
       spotNext = Math.max(5, 100 - spot); kickNext = false;
     } else {
       const lg2 = snaps[snaps.length - 1].gc, k = 4 - down;
@@ -405,7 +419,7 @@ function commentary(snaps, T, story, rng) {
       if (x.kind === 'fg' && !line) line = rng.pick([`${T[s].name} settle for three.`, `Points are points. ${T[s].name} take the field goal.`]);
       prevLead = L || prevLead;
     } else if (x.kind === 'turnover') {
-      line = rng.pick([`Big defensive play! That changes the field.`, `Turnover! The ${x.text.split('the ').pop().replace('!', '')} come up big.`]);
+      line = rng.pick([`Big defensive play! That changes the field.`, `Turnover! ${(m => m ? m[1][0].toUpperCase() + m[1].slice(1) : 'The defense')(x.text.match(/by (.+?)!?$/))} with the big play.`]);
       const d = dud.find(y => y.team === s);
       if (d && rng() < .6) line += ` Rough day for this offense — ${last(d.player)} has ${d.pts.toFixed(1)} to show for it.`;
     } else if (x.kind === 'half') {

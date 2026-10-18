@@ -15,13 +15,21 @@ Static site. No build step, no server, no database.
   `players.json` (Sleeper ids → name/pos/team/number), `schedule.json` (kickoffs), `styles/<week>.json` (weekly stat lines), `demo.json` (demo league).
 
 ## Run locally
-    python3 -m http.server 8000   # then open http://localhost:8000
+    python3 test/serve.py         # then open http://localhost:8000 (serves index.html for app paths)
 
 ## Deploy
 Import the repo in Vercel (framework preset: Other, no build command, output = repo root). The data workflow commits refreshed files, which redeploys automatically.
 
 ## Routes
-- `#/` home
-- `#/demo` demo league
-- `#/l/<leagueId>/w/<week>` a week's matchups
-- `#/l/<leagueId>/w/<week>/m/<matchupId>` watch a game
+- `/` home
+- `/demo` demo league
+- `/l/<leagueId>/w/<week>` a week's matchups
+- `/l/<leagueId>/w/<week>/m/<matchupId>` watch a game
+
+Old `#/...` links redirect to these. `vercel.json` rewrites `/l/*` and `/demo` to `index.html`.
+
+## Analytics
+Vercel Web Analytics (page views per path). Turn it on in the Vercel project: Analytics → Enable.
+
+## Tests
+    node test/fuzz.mjs 300        # random leagues in odd formats through the engine and renderer
