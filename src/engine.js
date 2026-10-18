@@ -313,7 +313,7 @@ export function generateGame(input) {
   snaps.push({ gc: GAME_LEN, q: 4, clk: '0:00', off: null, kind: 'final', text: 'FINAL', s0: 50, s1: 50, down: null, togo: null, sc: { ...score }, fa: +T.A.fant.toFixed(2), fb: +T.B.fant.toFixed(2), real: clock.toReal(GAME_LEN), st: [], big: true });
   for (const x of snaps) x.pp = ppAt(x.gc);
 
-  const story = storylines(T, input, curve, GRID, W, fantAt);
+  const story = storylines(T, input, curve, GRID, W, fantAt, clock);
   const highlights = cutHighlights(snaps);
   const calls = commentary(snaps, T, story, rng);
   return {
@@ -326,16 +326,20 @@ function abbrev(name) { const w = String(name).replace(/[^A-Za-z0-9 ]/g, ' ').sp
 function teamOut(t) { return { name: t.name, owner: t.owner, avatar: t.avatar || null, fant: +t.fant.toFixed(2), abbr: t.abbr, players: t.ps.map(p => ({ id: p.id, name: p.name, pos: p.pos, team: p.team, num: p.num || '', pts: p.pts, slot: p.slot || p.pos })), bench: (t.bench || []).map(p => ({ name: p.name, pos: p.pos, pts: p.pts })) }; }
 
 // ---------- what was this matchup about?
-function storylines(T, input, curve, GRID, W, fantAt) {
+function storylines(T, input, curve, GRID, W, fantAt, clock) {
   const out = [];
   const all = ['A', 'B'].flatMap(s => T[s].ps.map(p => ({ ...p, s })));
   const mvp = all.slice().sort((a, b) => b.pts - a.pts)[0];
   if (mvp && mvp.pts > 0) out.push({ type: 'mvp', team: mvp.s, player: mvp.name, pts: mvp.pts, text: `${mvp.name} led everyone with ${mvp.pts.toFixed(1)}.` });
   // comeback: biggest fantasy deficit the winner overcame
+  // comeback: winner trailed by at least half a league standard deviation once the Sunday early games were over
   if (W) {
+    const early = (clock.slots || []).find(s => s.label === 'Sunday early');
+    const from = early ? early.g1 : GAME_LEN / 2;
+    const sc = input.scale, sd = sc && sc.sd > 0 ? sc.sd : (sc && sc.mu > 0 ? sc.mu : 110) * .27;
     let worst = 0, at = 0;
-    for (let g = 0; g <= 3600; g += 30) { const d = fantAt(O[W], g) - fantAt(W, g); if (d > worst) { worst = d; at = g; } }
-    if (worst >= 12) out.push({ type: 'comeback', team: W, deficit: +worst.toFixed(1), gc: at, text: `${T[W].name} came back from ${worst.toFixed(1)} down.` });
+    for (let g = from; g <= GAME_LEN; g += 30) { const d = fantAt(O[W], g) - fantAt(W, g); if (d > worst) { worst = d; at = g; } }
+    if (worst >= sd / 2) out.push({ type: 'comeback', team: W, deficit: +worst.toFixed(1), gc: at, text: `${T[W].name} came back from ${worst.toFixed(1)} down after Sunday's early games.` });
   }
   const m = Math.abs(T.A.fant - T.B.fant);
   if (W && m < 5) out.push({ type: 'close', margin: +m.toFixed(2), text: `Decided by ${m.toFixed(2)} points.` });
@@ -399,7 +403,7 @@ function commentary(snaps, T, story, rng) {
     } else if (x.kind === 'final') {
       const L = lead(x.sc);
       line = L ? `Final: ${T[L].name} ${Math.max(x.sc.A, x.sc.B)}, ${T[O[L]].name} ${Math.min(x.sc.A, x.sc.B)}.` : `It ends tied at ${x.sc.A}.`;
-      if (cb && cb.team === L) line += ` What a comeback — down ${cb.deficit} in fantasy at one point.`;
+      if (cb && cb.team === L) line += ` What a comeback — down ${cb.deficit} in fantasy after Sunday's early games.`;
       const b = bench.find(y => y.team !== L) || bench[0];
       if (b) line += ` And somewhere on the ${T[b.team].name} bench, ${b.player}'s ${b.pts.toFixed(1)} points watched the whole thing${b.flips ? '. That would have won it' : ''}.`;
     } else if (x.kind === 'kickoff' && i === 0) {
