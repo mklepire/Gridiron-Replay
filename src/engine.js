@@ -311,7 +311,7 @@ export function generateGame(input) {
   // break cards: where the real week stood at the end of each quarter
   // describe the last fully finished window of real games, in plain terms
   const NICE = { 'Thursday night': 'Thursday night', 'Sunday morning': 'Sunday morning', 'Sunday early': "Sunday's early games", 'Sunday late': 'Sunday afternoon', 'Sunday night': 'Sunday', 'Monday night': 'Monday night', Saturday: 'Saturday', Friday: 'Friday' };
-  const thru = gc => { const s = (clock.slots || []).filter(x => gc >= x.g0 + .85 * (x.g1 - x.g0)).pop(); return s ? `Through ${NICE[s.label] || s.label}` : ''; };
+  const thru = gc => { const s = (clock.slots || []).filter(x => gc >= x.g0 + .8 * (x.g1 - x.g0)).pop(); return s ? `Through ${NICE[s.label] || s.label}` : ''; };
   const card = (gc, q, kind, text, sc) => ({ gc, q, clk: '0:00', off: null, kind, text, s0: 50, s1: 50, down: null, togo: null, sc: { ...sc }, fa: +fantAt('A', gc).toFixed(2), fb: +fantAt('B', gc).toFixed(2), real: clock.toReal(gc), thru: thru(gc), st: [], big: kind === 'final' });
   for (const [gc, q, kind, text] of [[900, 1, 'qtr', 'End of the 1st quarter'], [1800, 2, 'half', 'Halftime'], [2700, 3, 'qtr', 'End of the 3rd quarter']]) {
     const k = snaps.findIndex(x => x.gc >= gc);
