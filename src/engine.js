@@ -1,7 +1,8 @@
 // Gridiron Replay game engine: turns one fantasy matchup into an original football game.
 //
 // What is guaranteed:
-//   1. Final score = each team's fantasy total / DIV, rounded (fantasy winner always wins).
+//   1. Final score is league-relative: a league-average fantasy score (season to date) becomes NFL_AVG
+//      points, and each standard deviation above or below moves it NFL_SD points. Fantasy winner always wins.
 //   2. Touches, yards and touchdowns go to starters in proportion to their fantasy points,
 //      leaning on whoever was producing at that point in the week. Style (run vs catch,
 //      yards per touch) comes from the player's real weekly line when we have it.
@@ -9,7 +10,12 @@
 //      team's football score follows its fantasy total along that clock.
 // Everything else (individual plays, downs, yardage) is invented, deterministically from a seed.
 
-export const DIV = 5;
+export const NFL_AVG = 23, NFL_SD = 10;
+// fantasy total -> football points, given the league's season-to-date mean and standard deviation
+export function footballScore(f, scale) {
+  const mu = scale && scale.mu > 0 ? scale.mu : 110, sd = scale && scale.sd > 0 ? scale.sd : mu * .27;
+  return Math.max(0, Math.round(NFL_AVG + (f - mu) / sd * NFL_SD));
+}
 const O = { A: 'B', B: 'A' };
 const SKILL = new Set(['QB', 'RB', 'WR', 'TE']);
 const GAME_LEN = 3600;
@@ -99,7 +105,7 @@ export function generateGame(input) {
   const localPts = (p, gc, back = 480, fwd = 240) => Math.max(0, accrued(p, gc + fwd) - accrued(p, gc - back));
 
   // final score
-  const target = { A: Math.max(0, Math.round(T.A.fant / DIV)), B: Math.max(0, Math.round(T.B.fant / DIV)) };
+  const target = { A: footballScore(T.A.fant, input.scale), B: footballScore(T.B.fant, input.scale) };
   const W = T.A.fant === T.B.fant ? null : (T.A.fant > T.B.fant ? 'A' : 'B');
   if (W && target[W] <= target[O[W]]) target[W] = target[O[W]] + 1;
   if (!W) target.B = target.A; // a true fantasy tie stays tied

@@ -41,11 +41,22 @@ export function pairUp(L, rows, players) {
     return { rosterId: r.roster_id, name, owner: u ? u.display_name : '', avatar: u && u.avatar ? `https://sleepercdn.com/avatars/thumbs/${u.avatar}` : null, starters, bench, points: +(r.points || 0) };
   }
 }
-export function engineInput(leagueId, week, m, schedule, styles) {
+export function engineInput(leagueId, week, m, schedule, styles, scale) {
   return {
+    scale,
     seed: `${leagueId}:${week}:${m.id}`,
     schedule: (schedule.weeks || {})[week] || [],
     styles: styles || {},
     teams: { A: m.A, B: m.B },
   };
+}
+
+// season-to-date mean / standard deviation of team scores (weeks with games played only)
+export function leagueScale(weeksOfRows) {
+  const v = [];
+  for (const rows of weeksOfRows) for (const r of rows || []) if (r.matchup_id != null && +r.points > 0) v.push(+r.points);
+  if (v.length < 4) return null;
+  const mu = v.reduce((a, b) => a + b, 0) / v.length;
+  const sd = Math.sqrt(v.reduce((a, b) => a + (b - mu) ** 2, 0) / v.length);
+  return { mu, sd: Math.max(sd, mu * .12), n: v.length };
 }

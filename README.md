@@ -7,7 +7,7 @@ Static site. No build step, no server, no database.
 ## How it works
 - The browser pulls league, users, rosters and weekly matchups from the public Sleeper API.
 - `src/engine.js` turns each matchup into an original game, deterministically (same league + week + matchup = same game):
-  - Final score = each team's fantasy total ÷ 5, rounded. The fantasy winner always wins.
+  - Final score is league-relative: the league's season-to-date average team score becomes 23 points and each standard deviation moves it ±10. The fantasy winner always wins.
   - The NFL week's kickoff slots are laid across the 60-minute clock (Thursday opens, Monday closes). Each team's score follows its fantasy total along that clock.
   - Touches, yards and TDs go to starters by fantasy points, leaning on whoever was producing at that point of the week. Run/catch style comes from real weekly stats.
 - `src/render.js` draws it on a 320×180 canvas.

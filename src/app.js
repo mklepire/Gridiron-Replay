@@ -1,6 +1,6 @@
-import { generateGame, DIV } from './engine.js';
+import { generateGame, NFL_AVG, NFL_SD } from './engine.js';
 import { Player, COLORS } from './render.js';
-import { getState, getLeague, getMatchups, getStatic, pairUp, engineInput } from './sleeper.js';
+import { getState, getLeague, getMatchups, getStatic, pairUp, engineInput, leagueScale } from './sleeper.js';
 
 const app = document.getElementById('app');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -44,9 +44,11 @@ async function loadLeague(id) {
 async function weekGames(id, ctx, week) {
   const rows = await ctx.matchups(week);
   const pairs = pairUp(ctx.L, rows, PLAYERS);
+  const upto = ctx.weeks.filter(w => w <= week);
+  const scale = leagueScale(await Promise.all(upto.map(w => w === week ? rows : ctx.matchups(w).catch(() => []))));
   const styles = await stylesFor(ctx.L.league.season, week);
   const sched = String(ctx.L.league.season) === String(SCHEDULE.season) ? SCHEDULE : { weeks: {} };
-  return pairs.map(m => ({ m, g: generateGame(engineInput(id, week, m, sched, styles)) }));
+  return pairs.map(m => ({ m, g: generateGame(engineInput(id, week, m, sched, styles, scale)), scale }));
 }
 
 // ---------- router
@@ -87,7 +89,7 @@ function home() {
     ${recent.length ? `<div><label>Your leagues</label><div class="recent">${recent.map(r => `<a class="btn" href="#/l/${esc(r.id)}">${esc(r.name)}</a>`).join('')}</div></div>` : ''}
   </section>
   <section class="how">
-    <div class="panel"><span class="n">1 · THE SCORE</span><p>Fantasy points ÷ ${DIV} becomes the final score. 159.7 to 136.7 plays out as 32–27.</p></div>
+    <div class="panel"><span class="n">1 · THE SCORE</span><p>Scores are relative to your league. An average week scores like an average NFL team, about ${NFL_AVG}. Big weeks become shootouts and duds become 10-point games.</p></div>
     <div class="panel"><span class="n">2 · THE STARS</span><p>Touches, yards and touchdowns go to your starters by fantasy points. A 30-point day gets the ball.</p></div>
     <div class="panel"><span class="n">3 · THE TIMING</span><p>Thursday night opens the game and Monday night closes it. If you were down after Sunday's games, you're down in the 3rd quarter.</p></div>
   </section>`;
@@ -179,7 +181,7 @@ async function watch(id, week, mid) {
   <section class="panel"><h2>The story</h2><ul class="story">${g.story.map(s => `<li><span class="k">${esc({ mvp: 'MVP', comeback: 'Comeback', close: 'Nail-biter', blowout: 'Blowout', dud: 'Dud', bench: 'Bench' }[s.type] || s.type)}</span><span>${esc(s.text)}</span></li>`).join('')}</ul></section>
   <div class="grid2"><section class="panel la" id="la"></section><section class="panel lb" id="lb"></section></div>
   <details class="panel"><summary>How this game is made</summary><ol>
-    <li>Final score is each team's fantasy total ÷ ${DIV}, rounded. The fantasy winner always wins.</li>
+    <li>Scores are relative to your league this season${hit.scale ? ` (average ${hit.scale.mu.toFixed(1)}, typical swing ±${hit.scale.sd.toFixed(1)})` : ''}. An average fantasy score plays out as ${NFL_AVG} points, and each typical swing above or below moves it about ${NFL_SD}. The fantasy winner always wins.</li>
     <li>The NFL week is laid across the game clock: Thursday night opens the 1st quarter, Sunday's games fill the middle, Monday night closes the 4th.</li>
     <li>Each team scores when its fantasy total got there in real life, so comebacks land when they actually happened.</li>
     <li>Touches, yards and touchdowns go to starters by fantasy points, leaning on whoever was producing at that point of the week. Running and catching styles come from each player's real stat line.</li>
